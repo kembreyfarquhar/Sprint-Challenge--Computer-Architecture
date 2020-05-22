@@ -12,6 +12,7 @@ class CPU:
         self.pc = 0
         self.sp = 7  # stack pointer index in register
         self.reg[self.sp] = 244  # stack pointer
+        self.flag = 0
 
         self.branchtable = {}
         self.branchtable[130] = self.LDI
@@ -23,6 +24,13 @@ class CPU:
         self.branchtable[70] = self.pop
         self.branchtable[17] = self.ret
         self.branchtable[80] = self.call
+        self.branchtable[167] = self.compare
+        self.branchtable[84] = self.jump
+        self.branchtable[86] = self.JNE
+        self.branchtable[85] = self.JEQ
+        self.branchtable[168] = self.and_
+        self.branchtable[171] = self.xor
+        self.branchtable[170] = self.or_
 
     def load(self, path):
         """Load a program into memory."""
@@ -40,15 +48,59 @@ class CPU:
 
         if op == "ADD":
             self.reg[reg_a] += self.reg[reg_b]
+
         elif op == "MUL":
             self.reg[reg_a] *= self.reg[reg_b]
+
+        # compare two numbers, use flag to indicate result
+        elif op == "CMP":
+            if self.reg[reg_a] == self.reg[reg_b]:
+                self.flag = 1
+            elif self.reg[reg_a] > self.reg[reg_b]:
+                self.flag = 2
+            elif self.reg[reg_a] < self.reg[reg_b]:
+                self.flag = 4
+
+        elif op == "AND":
+            self.reg[reg_a] &= self.reg[reg_b]
+
+        elif op == "XOR":
+            self.reg[reg_a] ^= self.reg[reg_b]
+
+        elif op == "OR":
+            self.reg[reg_a] |= self.reg[reg_b]
+
         else:
             raise Exception("Unsupported ALU operation")
 
     def register(self, op):
-        #CALL, INT, JEQ, JGE, JGT, JLE, JLT, JMP, JNE
-        # TODO
-        pass
+        if op == "CALL":
+            new_pc = self.reg[self.ram_read(self.pc+1)]
+            self.push(self.pc + 2)
+            self.pc = new_pc
+        elif op == "JMP":
+            # index of the register to jump to
+            reg_index = self.ram_read(self.pc + 1)
+            # the value at that index
+            value = self.reg[reg_index]
+            # set it to pc
+            self.pc = value
+        elif op == "JNE":
+            # if flag is clear, jump to given address
+            if ~self.flag & 1:
+                self.jump()
+            # otherwise, continue
+            else:
+                self.pc += 2
+        elif op == "JEQ":
+            # if equal flag is set to true, jump to given address
+            if self.flag & 1:
+                self.jump()
+            # otherwise, continue
+            else:
+                self.pc += 2
+        else:
+            raise Exception("Unsupported Register operatonion")
 
     def HLT(self):
         print('System exiting...')
@@ -68,14 +120,6 @@ class CPU:
     def ram_write(self, MDR, MAR):
         self.ram[MAR] = MDR
 
-    def add(self):
-        self.alu("ADD", self.ram_read(self.pc+1), self.ram_read(self.pc+2))
-        self.pc += 3
-
-    def mul(self):
-        self.alu("MUL", self.ram_read(self.pc+1), self.ram_read(self.pc+2))
-        self.pc += 3
-
     def push(self, value=None):
         self.reg[self.sp] -= 1  # decrement sp
         if not value:
@@ -90,14 +134,50 @@ class CPU:
         self.reg[self.sp] += 1  # increment sp
         self.pc += 2
 
-    def call(self):
-        new_pc = self.reg[self.ram_read(self.pc+1)]
-        self.push(self.pc + 2)
-        self.pc = new_pc
-
     def ret(self):
         self.pc = self.ram_read(self.reg[self.sp])
         self.reg[self.sp] += 1
+
+# =====================ALU OPERATIONS=====================================
+    def add(self):
+        self.alu("ADD", self.ram_read(self.pc+1), self.ram_read(self.pc+2))
+        self.pc += 3
+
+    def mul(self):
+        self.alu("MUL", self.ram_read(self.pc+1), self.ram_read(self.pc+2))
+        self.pc += 3
+
+    def compare(self):
+        # utilize the ALU to handle the CMP operation
+        self.alu('CMP', self.ram_read(self.pc+1), self.ram_read(self.pc+2))
+        self.pc += 3
+
+    def and_(self):
+        self.alu("AND", self.ram_read(self.pc+1), self.ram_read(self.pc+2))
+        self.pc += 3
+
+    def xor(self):
+        self.alu('XOR', self.ram_read(self.pc+1), self.ram_read(self.pc+2))
+        self.pc += 3
+
+    def or_(self):
+        self.alu('OR', self.ram_read(self.pc+1), self.ram_read(self.pc+2))
+        self.pc += 3
+
+# ========================REGISTER OPERATIONS===============================
+    def call(self):
+        self.register("CALL")
+
+    def jump(self):
+        self.register("JMP")
+
+    def JNE(self):
+        self.register("JNE")
+
+    def JEQ(self):
+        self.register("JEQ")
+
+# ============================================================================
 
     def trace(self):
         """
